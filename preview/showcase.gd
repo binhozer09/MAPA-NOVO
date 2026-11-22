@@ -144,3 +144,5 @@ func _unhandled_input(event: InputEvent) -> void:
 		yaw -= event.relative.x * 0.006
 		pitch -= event.relative.y * 0.004
 		_update_camera()
+
+# Build trigger: nova compilação solicitada sem alterar o visualizador ou os assets.
