@@ -1,0 +1,43 @@
+name: Build Android Preview APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'project.godot'
+      - 'export_presets.cfg'
+      - 'preview/**'
+      - '.github/workflows/android-preview.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+          use-dotnet: false
+          include-templates: true
+      - name: Build APK
+        run: |
+          mkdir -p build
+          godot --headless --editor --path . --import
+          godot --headless --path . --export-debug "Android" build/mapa-novo-preview.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapa-novo-preview-apk
+          path: build/mapa-novo-preview.apk
+          if-no-files-found: error
