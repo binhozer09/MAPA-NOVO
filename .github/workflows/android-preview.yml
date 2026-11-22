@@ -33,7 +33,7 @@ jobs:
           version: 4.3.0
           use-dotnet: false
           include-templates: true
-      - name: Keep only preview assets
+      - name: Keep preview models and their textures
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -54,6 +54,10 @@ jobs:
               models = sorted(folder.rglob("*.glb")) if folder.exists() else []
               keep.update(models[:24])
 
+          # Keep image assets because GLB files reference these textures by path.
+          for suffix in (".png", ".jpg", ".jpeg", ".webp", ".hdr"):
+              keep.update(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == suffix)
+
           for path in sorted(root.rglob("*"), reverse=True):
               if not path.is_file():
                   continue
@@ -67,8 +71,14 @@ jobs:
                       path.rmdir()
                   except OSError:
                       pass
-          print(f"Kept {sum(1 for p in keep if p.suffix == '.glb')} GLB models for the preview.")
+          print(f"Kept {sum(1 for p in keep if p.suffix.lower() == '.glb')} GLB models and image textures.")
           PY
+      - name: Create Android debug keystore
+        run: |
+          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          sed -i 's|^keystore/debug=.*|keystore/debug="'$HOME'/.android/debug.keystore"|' export_presets.cfg
+          sed -i 's|^keystore/debug_user=.*|keystore/debug_user="androiddebugkey"|' export_presets.cfg
+          sed -i 's|^keystore/debug_password=.*|keystore/debug_password="android"|' export_presets.cfg
       - name: Import preview assets
         run: godot --headless --editor --path . --import
       - name: Export Android APK
