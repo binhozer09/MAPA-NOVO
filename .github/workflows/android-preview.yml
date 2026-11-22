@@ -6,6 +6,7 @@ on:
     paths:
       - 'project.godot'
       - 'export_presets.cfg'
+      - '.github/workflows/android-preview.yml'
       - 'preview/**'
 
 concurrency:
