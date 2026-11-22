@@ -12,7 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,55 +26,18 @@ jobs:
         with:
           packages: platform-tools
       - name: Install Android platform
-        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.3.0
           use-dotnet: false
           include-templates: true
-      - name: Keep preview models and their textures
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          root = Path(".")
-          keep = {
-              Path("project.godot"),
-              Path("export_presets.cfg"),
-              Path("preview/main.tscn"),
-              Path("preview/showcase.gd"),
-          }
-          model_dirs = [
-              Path("buildings"),
-              Path("props"),
-              Path("environment/vegetation"),
-          ]
-          for folder in model_dirs:
-              models = sorted(folder.rglob("*.glb")) if folder.exists() else []
-              keep.update(models[:24])
-
-          # Keep image assets because GLB files reference these textures by path.
-          for suffix in (".png", ".jpg", ".jpeg", ".webp", ".hdr"):
-              keep.update(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == suffix)
-
-          for path in sorted(root.rglob("*"), reverse=True):
-              if not path.is_file():
-                  continue
-              rel = path.relative_to(root)
-              if rel in keep:
-                  continue
-              path.unlink()
-          for path in sorted(root.rglob("*"), reverse=True):
-              if path.is_dir():
-                  try:
-                      path.rmdir()
-                  except OSError:
-                      pass
-          print(f"Kept {sum(1 for p in keep if p.suffix.lower() == '.glb')} GLB models and image textures.")
-          PY
       - name: Create Android debug keystore
         run: |
+          mkdir -p "$HOME/.android"
           keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           sed -i 's|^keystore/debug=.*|keystore/debug="'$HOME'/.android/debug.keystore"|' export_presets.cfg
           sed -i 's|^keystore/debug_user=.*|keystore/debug_user="androiddebugkey"|' export_presets.cfg
