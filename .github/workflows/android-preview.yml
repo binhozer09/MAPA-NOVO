@@ -8,15 +8,18 @@ on:
       - 'export_presets.cfg'
       - '.github/workflows/android-preview.yml'
       - 'preview/**'
+      - 'buildings/**/*.glb'
+      - 'props/**/*.glb'
+      - 'environment/vegetation/**/*.glb'
 
 concurrency:
   group: mapa-novo-android-preview
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,39 +49,60 @@ jobs:
           sed -i 's|^keystore/debug=.*|keystore/debug="'$HOME'/.android/debug.keystore"|' export_presets.cfg
           sed -i 's|^keystore/debug_user=.*|keystore/debug_user="androiddebugkey"|' export_presets.cfg
           sed -i 's|^keystore/debug_password=.*|keystore/debug_password="android"|' export_presets.cfg
-      # Keep the complete Godot editor cache, not only converted textures/models.
-      # This preserves the filesystem scan/import metadata between builds.
-      - name: Cache Godot project imports
-        uses: actions/cache@v4
-        with:
-          path: .godot/
-          key: ${{ runner.os }}-godot-4.3.0-${{ hashFiles('project.godot', 'buildings/**', 'environment/**', 'military/**', 'props/**', 'preview/**') }}
-          restore-keys: |
-            ${{ runner.os }}-godot-4.3.0-
       - name: Inventory project assets
         shell: bash
         run: |
           mkdir -p build/logs
           {
-            echo "=== Project asset inventory ==="
+            echo "=== Complete source asset inventory (preserved) ==="
             du -sh buildings environment military props
             find buildings environment military props -type f | awk '
               { n++; ext=$0; sub(/^.*\./,"",ext); count[ext]++ }
               END { print "Total files:", n; for (ext in count) print ext ":", count[ext] }
             ' | sort
           } 2>&1 | tee build/logs/asset-inventory.log
+      # Build in an isolated preview project so Godot does not import the
+      # unused FBX/OBJ/HDR/audio/texture libraries from the 623 MB source kit.
+      # Original source assets remain untouched in the repository.
+      - name: Stage only preview GLB models
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREVIEW="build/preview-project"
+          mkdir -p "$PREVIEW/preview" "$PREVIEW/build"
+          cp project.godot export_presets.cfg "$PREVIEW/"
+          cp preview/main.tscn preview/showcase.gd "$PREVIEW/preview/"
+          mapfile -t MODELS < <(find buildings props environment/vegetation -type f -iname '*.glb' | sort | head -n 72)
+          if [ "${#MODELS[@]}" -eq 0 ]; then
+            echo "No GLB preview models were found" >&2
+            exit 1
+          fi
+          printf 'Staging %s GLB models (the source library is unchanged)\n' "${#MODELS[@]}" | tee build/logs/preview-staging.log
+          for src in "${MODELS[@]}"; do
+            mkdir -p "$PREVIEW/$(dirname "$src")"
+            cp "$src" "$PREVIEW/$src"
+          done
+          du -sh "$PREVIEW" | tee -a build/logs/preview-staging.log
+          find "$PREVIEW" -type f -name '*.glb' | wc -l | tee -a build/logs/preview-staging.log
+      - name: Cache Godot preview imports
+        uses: actions/cache@v4
+        with:
+          path: build/preview-project/.godot/
+          key: ${{ runner.os }}-godot-preview-4.3.0-${{ hashFiles('project.godot', 'preview/**', 'buildings/**/*.glb', 'props/**/*.glb', 'environment/vegetation/**/*.glb') }}
+          restore-keys: |
+            ${{ runner.os }}-godot-preview-4.3.0-
       - name: Import preview assets
         shell: bash
         run: |
           mkdir -p build/logs
           set -o pipefail
-          godot --verbose --headless --editor --path . --import 2>&1 | tee build/logs/godot-import.log
+          timeout 45m godot --verbose --headless --editor --path build/preview-project --import 2>&1 | tee build/logs/godot-import.log
       - name: Export Android APK
         shell: bash
         run: |
-          mkdir -p build/logs build
+          mkdir -p build/logs build/preview-project/build
           set -o pipefail
-          godot --verbose --headless --path . --export-debug "Android" build/mapa-novo-preview.apk 2>&1 | tee build/logs/godot-export.log
+          godot --verbose --headless --path build/preview-project --export-debug "Android" build/preview-project/build/mapa-novo-preview.apk 2>&1 | tee build/logs/godot-export.log
       - name: Upload diagnostic logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,5 +115,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mapa-novo-preview-apk
-          path: build/mapa-novo-preview.apk
+          path: build/preview-project/build/mapa-novo-preview.apk
           if-no-files-found: error
