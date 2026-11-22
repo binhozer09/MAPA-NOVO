@@ -45,11 +45,13 @@ jobs:
           sed -i 's|^keystore/debug=.*|keystore/debug="'$HOME'/.android/debug.keystore"|' export_presets.cfg
           sed -i 's|^keystore/debug_user=.*|keystore/debug_user="androiddebugkey"|' export_presets.cfg
           sed -i 's|^keystore/debug_password=.*|keystore/debug_password="android"|' export_presets.cfg
-      - name: Cache Godot imported assets
+      # Keep the complete Godot editor cache, not only converted textures/models.
+      # This preserves the filesystem scan/import metadata between builds.
+      - name: Cache Godot project imports
         uses: actions/cache@v4
         with:
-          path: .godot/imported
-          key: ${{ runner.os }}-godot-4.3.0-${{ hashFiles('project.godot', '**/*.glb', '**/*.fbx', '**/*.obj', '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.webp', '**/*.hdr') }}
+          path: .godot/
+          key: ${{ runner.os }}-godot-4.3.0-${{ hashFiles('project.godot', 'buildings/**', 'environment/**', 'military/**', 'props/**', 'preview/**') }}
           restore-keys: |
             ${{ runner.os }}-godot-4.3.0-
       - name: Inventory project assets
