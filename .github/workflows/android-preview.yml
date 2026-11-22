@@ -60,7 +60,7 @@ jobs:
             echo "=== Project asset inventory ==="
             du -sh buildings environment military props
             find buildings environment military props -type f | awk '
-              { n++; ext=$0; sub(/^.*\\./,"",ext); count[ext]++ }
+              { n++; ext=$0; sub(/^.*\./,"",ext); count[ext]++ }
               END { print "Total files:", n; for (ext in count) print ext ":", count[ext] }
             ' | sort
           } 2>&1 | tee build/logs/asset-inventory.log
