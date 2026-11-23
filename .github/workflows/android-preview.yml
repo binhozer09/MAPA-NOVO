@@ -9,8 +9,11 @@ on:
       - '.github/workflows/android-preview.yml'
       - 'preview/**'
       - 'buildings/**/*.glb'
+      - 'buildings/**/Textures/**'
       - 'props/**/*.glb'
+      - 'props/**/Textures/**'
       - 'environment/vegetation/**/*.glb'
+      - 'environment/vegetation/**/Textures/**'
 
 concurrency:
   group: mapa-novo-android-preview-optimized
@@ -32,10 +35,10 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-      - name: Install Android platform
+      - name: Install Android platform and native build tools
         run: |
           yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "cmdline-tools;latest" "cmake;3.10.2.4988404" "ndk;23.2.8568313"
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
         with:
@@ -61,10 +64,8 @@ jobs:
               END { print "Total files:", n; for (ext in count) print ext ":", count[ext] }
             ' | sort
           } 2>&1 | tee build/logs/asset-inventory.log
-      # Build in an isolated preview project so Godot does not import the
-      # unused FBX/OBJ/HDR/audio/texture libraries from the 623 MB source kit.
-      # Original source assets remain untouched in the repository.
-      - name: Stage only preview GLB models
+      # Build in an isolated preview project; the original source library is untouched.
+      - name: Stage only preview GLB models and companion textures
         shell: bash
         run: |
           set -euo pipefail
@@ -79,16 +80,22 @@ jobs:
           fi
           printf 'Staging %s GLB models (the source library is unchanged)\n' "${#MODELS[@]}" | tee build/logs/preview-staging.log
           for src in "${MODELS[@]}"; do
-            mkdir -p "$PREVIEW/$(dirname "$src")"
+            model_dir="$(dirname "$src")"
+            mkdir -p "$PREVIEW/$model_dir"
             cp "$src" "$PREVIEW/$src"
+            # GLB files in this asset kit reference external files in sibling Textures folders.
+            if [ -d "$model_dir/Textures" ] && [ ! -d "$PREVIEW/$model_dir/Textures" ]; then
+              cp -R "$model_dir/Textures" "$PREVIEW/$model_dir/"
+            fi
           done
           du -sh "$PREVIEW" | tee -a build/logs/preview-staging.log
           find "$PREVIEW" -type f -name '*.glb' | wc -l | tee -a build/logs/preview-staging.log
+          find "$PREVIEW" -type f -path '*/Textures/*' | wc -l | tee -a build/logs/preview-staging.log
       - name: Cache Godot preview imports
         uses: actions/cache@v4
         with:
           path: build/preview-project/.godot/
-          key: ${{ runner.os }}-godot-preview-4.3.0-${{ hashFiles('project.godot', 'preview/**', 'buildings/**/*.glb', 'props/**/*.glb', 'environment/vegetation/**/*.glb') }}
+          key: ${{ runner.os }}-godot-preview-4.3.0-${{ hashFiles('project.godot', 'preview/**', 'buildings/**/*.glb', 'buildings/**/Textures/**', 'props/**/*.glb', 'props/**/Textures/**', 'environment/vegetation/**/*.glb', 'environment/vegetation/**/Textures/**') }}
           restore-keys: |
             ${{ runner.os }}-godot-preview-4.3.0-
       - name: Import preview assets
